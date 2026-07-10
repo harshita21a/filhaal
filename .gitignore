@@ -1,6 +1,5 @@
 venv 
 node_modules 
 __pycache__ 
-backend\uploads 
 build
 backend\.env
