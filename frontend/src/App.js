@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import Home from "@/pages/Home";
 import CategoryPage from "@/pages/CategoryPage";
 import PostDetail from "@/pages/PostDetail";
+import Suggestions from "@/pages/Suggestions";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminDashboard from "@/pages/AdminDashboard";
 import PostEditor from "@/pages/PostEditor";
@@ -25,6 +26,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/category/:name" element={<CategoryPage />} />
             <Route path="/post/:slug" element={<PostDetail />} />
+            <Route path="/suggestions" element={<Suggestions />} />
             <Route path="/admin/login" element={<AdminLogin />} />
             <Route path="/admin" element={<Protected><AdminDashboard /></Protected>} />
             <Route path="/admin/new" element={<Protected><PostEditor /></Protected>} />

@@ -100,6 +100,16 @@ class Post(PostBase):
 
 class LoginRequest(BaseModel):
     password: str
+class SuggestionCreate(BaseModel):
+    category: str
+    title: str
+    note: str = ""
+    name: str = ""
+
+
+class Suggestion(SuggestionCreate):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: str = Field(default_factory=now_iso)
 
 
 def slugify(title: str) -> str:
@@ -193,7 +203,30 @@ async def get_post(slug: str):
         raise HTTPException(status_code=404, detail="Post not found")
     return doc
 
+# --- Suggestions (public — anyone can submit and view) ---
+SUGGESTION_CATEGORIES = ["Song", "Book", "Website", "Watch", "Other"]
 
+
+@api_router.get("/suggestions/categories")
+async def get_suggestion_categories():
+    return SUGGESTION_CATEGORIES
+
+
+@api_router.get("/suggestions")
+async def list_suggestions():
+    docs = await db.suggestions.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    return docs
+
+
+@api_router.post("/suggestions")
+async def create_suggestion(payload: SuggestionCreate):
+    if not payload.title.strip():
+        raise HTTPException(status_code=400, detail="Please add a title")
+    if payload.category not in SUGGESTION_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    suggestion = Suggestion(**payload.model_dump())
+    await db.suggestions.insert_one(suggestion.model_dump())
+    return suggestion.model_dump()
 # --- Admin posts ---
 @api_router.get("/admin/posts")
 async def admin_list_posts(_: bool = Depends(require_admin)):

@@ -35,6 +35,13 @@ export const Header = () => {
                 {c}
               </Link>
             ))}
+            <Link
+              to="/suggestions"
+              className="text-sm uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground transition-colors link-underline"
+              data-testid="nav-suggestions"
+            >
+              Suggest
+            </Link>
           </nav>
 
           <div className="flex items-center gap-5">
