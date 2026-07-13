@@ -29,36 +29,27 @@ JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALGORITHM = "HS256"
 ADMIN_PASSWORD = os.environ['ADMIN_PASSWORD']
 
-# ---------------- Local storage config ----------------
-# NOTE: The original version of this file used Emergent's proprietary object
-# storage API (integrations.emergentagent.com). That endpoint only works
-# inside the Emergent platform, so for a locally-runnable app we store
-# uploaded files on disk instead, under backend/uploads/.
+# ---------------- Image storage config (Cloudinary) ----------------
+# NOTE: We originally stored uploaded images on the backend's local disk.
+# That works for local development, but on hosting platforms like Render's
+# free tier, the disk is wiped every time the server restarts or wakes up
+# from sleep — so uploaded images would silently disappear after a while.
+# Cloudinary stores images permanently on its own servers instead.
+import cloudinary
+import cloudinary.uploader
+
+cloudinary.config(
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET"),
+    secure=True,
+)
 APP_NAME = os.environ.get("APP_NAME", "filhaal")
-UPLOAD_DIR = ROOT_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
 
 CATEGORIES = ["Songs", "Books", "Websites", "Currently Into"]
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-
-def save_file_locally(filename: str, data: bytes) -> str:
-    """Save bytes to disk and return the relative storage path."""
-    stored_name = f"{uuid.uuid4().hex}_{filename}"
-    dest = UPLOAD_DIR / stored_name
-    with open(dest, "wb") as f:
-        f.write(data)
-    return stored_name
-
-
-def read_file_locally(stored_name: str) -> bytes:
-    dest = UPLOAD_DIR / stored_name
-    if not dest.exists():
-        raise FileNotFoundError(stored_name)
-    with open(dest, "rb") as f:
-        return f.read()
 
 
 # ---------------- Models ----------------
@@ -269,38 +260,31 @@ async def delete_post(post_id: str, _: bool = Depends(require_admin)):
     return {"ok": True}
 
 
-# --- Uploads (now stored locally on disk instead of Emergent object storage) ---
-MIME_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-              "gif": "image/gif", "webp": "image/webp"}
-
-
+# --- Uploads (stored permanently on Cloudinary) ---
 @api_router.post("/upload")
 async def upload(file: UploadFile = File(...), _: bool = Depends(require_admin)):
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
-    content_type = file.content_type or MIME_TYPES.get(ext, "application/octet-stream")
     data = await file.read()
-    stored_name = save_file_locally(file.filename, data)
+    try:
+        result = cloudinary.uploader.upload(
+            data,
+            folder=APP_NAME,
+            public_id=uuid.uuid4().hex,
+            resource_type="image",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Image upload failed: {e}")
+    secure_url = result["secure_url"]
     await db.files.insert_one({
         "id": str(uuid.uuid4()),
-        "storage_path": stored_name,
+        "storage_path": result.get("public_id"),
+        "url": secure_url,
         "original_filename": file.filename,
-        "content_type": content_type,
+        "content_type": file.content_type,
         "size": len(data),
         "is_deleted": False,
         "created_at": now_iso(),
     })
-    return {"url": f"/api/files/{stored_name}", "path": stored_name}
-
-
-@api_router.get("/files/{path:path}")
-async def serve_file(path: str):
-    record = await db.files.find_one({"storage_path": path, "is_deleted": False})
-    try:
-        data = read_file_locally(path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found")
-    ct = record.get("content_type") if record else "application/octet-stream"
-    return Response(content=data, media_type=ct)
+    return {"url": secure_url, "path": result.get("public_id")}
 
 
 app.include_router(api_router)
